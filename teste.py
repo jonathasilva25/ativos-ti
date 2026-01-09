@@ -67,11 +67,14 @@ def gerar_pdf_etiquetas(lista_ativos_df, configs):
         # Logo (se houver)
         y_texto = y_offset + 3
         if configs['logo'] is not None:
-            img_buffer = BytesIO(configs['logo'])
-            pdf.image(img_buffer, x=x_offset + 2, y=y_offset + 2, h=7)
-            y_texto = y_offset + 10
+            try:
+                img_buffer = BytesIO(configs['logo'])
+                # Adicionado type="PNG" para compatibilidade com Streamlit Cloud
+                pdf.image(img_buffer, x=x_offset + 2, y=y_offset + 2, h=7, type="PNG")
+                y_texto = y_offset + 10
+            except: y_texto = y_offset + 3
 
-        # Informações (ESTRUTURA ORIGINAL)
+        # Informações (ESTRUTURA ORIGINAL PRESERVADA)
         pdf.set_font("Arial", 'B', 7)
         pdf.set_xy(x_offset + 2, y_texto)
         pdf.cell(0, 4, txt=configs['titulo'], ln=True)
@@ -87,13 +90,14 @@ def gerar_pdf_etiquetas(lista_ativos_df, configs):
         pdf.set_x(x_offset + 2)
         pdf.cell(0, 4, txt=f"MODELO: {mod}", ln=True)
 
-        # QR Code (Original)
+        # QR Code (CORRIGIDO PARA CLOUD)
         if configs['mostrar_qr']:
             qr = qrcode.make(f"TAG: {tag} | SETOR: {setor}")
             qr_img = BytesIO()
             qr.save(qr_img, format="PNG")
             qr_img.seek(0)
-            pdf.image(qr_img, x=x_offset + largura_etiq - 13, y=y_offset + altura_etiq - 13, w=11)
+            # Adicionado type="PNG" para evitar AttributeError no Cloud
+            pdf.image(qr_img, x=x_offset + largura_etiq - 13, y=y_offset + altura_etiq - 13, w=11, type="PNG")
         
         # Lógica de Colunas
         col += 1
@@ -109,7 +113,7 @@ def gerar_pdf_etiquetas(lista_ativos_df, configs):
 
 # --- LOGIN ---
 if not st.session_state.logado:
-    st.title("🔐 Login Administrativo")
+    st.title("🔐 Login Administrativo 2026")
     senha = st.text_input("Senha", type="password")
     if st.button("Acessar"):
         if senha == "admin123":
@@ -127,18 +131,18 @@ with aba1:
     st.subheader("Gerar Lote de Equipamentos")
     with st.form("form_lote"):
         c1, c2, c3 = st.columns(3)
-        setor = c1.text_input("Setor/Sessão", value="GERAL")
+        setor_input = c1.text_input("Setor/Sessão", value="GERAL")
         qtd = c2.number_input("Quantidade", min_value=1, max_value=100, value=5)
         modelo_base = c3.text_input("Modelo Base", value="Notebook Dell")
         prefixo = st.text_input("Prefixo Patrimônio", value="TAG-2026-")
         if st.form_submit_button("Gerar e Cadastrar"):
             c.execute("SELECT COUNT(*) FROM ativos")
-            res = c.fetchone()[0]
+            res_count = c.fetchone()[0]
             novos = []
             for i in range(qtd):
-                tag = f"{prefixo}{res + i + 1:04d}"
-                c.execute("INSERT OR IGNORE INTO ativos VALUES (?,?,?,?,?,?)", (tag, "Computador", modelo_base, "0.0.0.0", setor, "Ativo"))
-                novos.append({'patrimonio': tag, 'sessao': setor, 'modelo': modelo_base})
+                tag = f"{prefixo}{res_count + i + 1:04d}"
+                c.execute("INSERT OR IGNORE INTO ativos VALUES (?,?,?,?,?,?)", (tag, "Computador", modelo_base, "0.0.0.0", setor_input, "Ativo"))
+                novos.append({'patrimonio': tag, 'sessao': setor_input, 'modelo': modelo_base})
             conn.commit()
             st.session_state.pdf_cache = gerar_pdf_etiquetas(pd.DataFrame(novos), st.session_state.config_label)
             st.success(f"{qtd} ativos cadastrados!"); st.rerun()
@@ -187,13 +191,13 @@ with aba2:
 with aba3:
     st.subheader("🤖 IA TI 2026")
     api_key = st.text_input("Gemini API Key", type="password")
-    q = st.text_area("Analise:")
+    q_ia = st.text_area("Analise:")
     if st.button("Consultar IA"):
         try:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
             model = genai.GenerativeModel('gemini-pro')
-            res = model.generate_content(f"Dados TI: {df_geral.to_string()}\nPergunta: {q}")
+            res = model.generate_content(f"Dados TI: {df_geral.to_string()}\nPergunta: {q_ia}")
             st.info(res.text)
         except Exception as e: st.error(f"Erro: {e}")
 
@@ -201,13 +205,13 @@ with aba3:
 with aba4:
     st.subheader("🎨 Personalizar Design")
     with st.container(border=True):
-        c1, c2 = st.columns(2)
-        with c1:
+        c1_pers, c2_pers = st.columns(2)
+        with c1_pers:
             st.session_state.config_label['titulo'] = st.text_input("Título", value=st.session_state.config_label['titulo'])
             st.session_state.config_label['criado_por'] = st.text_input("Criado por", value=st.session_state.config_label['criado_por'])
             st.session_state.config_label['mostrar_qr'] = st.toggle("Mostrar QR Code", value=st.session_state.config_label['mostrar_qr'])
-        with c2:
-            img_up = st.file_uploader("Logo (PNG/JPG)", type=["png", "jpg"])
+        with c2_pers:
+            img_up = st.file_uploader("Logo (PNG Recomendado)", type=["png", "jpg"])
             if st.button("💾 Salvar Design"):
                 if img_up: st.session_state.config_label['logo'] = img_up.getvalue()
                 st.success("Salvo!"); st.rerun()
